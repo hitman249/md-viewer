@@ -1,0 +1,390 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #59636e;
+  --border: #d0d7de;
+  --code-bg: #f6f8fa;
+  --inline-code-bg: #ececef;
+  --accent: #0969da;
+  --blockquote-bg: #f6f8fa;
+  --ctl-hover: #d3d7dc;
+  --ctl-hover-fg: #1f2328;
+  --window-border: #6e7681;
+  --syn-keyword: #d73a49;
+  --syn-string: #032f62;
+  --syn-comment: #6a737d;
+  --syn-number: #005cc5;
+  --syn-type: #005cc5;
+  --syn-function: #6f42c1;
+  --syn-variable: #e36209;
+  --syn-punctuation: #6e7781;
+  --syn-error: #d73a49;
+  --syn-tag: #22863a;
+  --syn-attribute: #6f42c1;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --fg: #e6edf3;
+    --muted: #9198a1;
+    --border: #30363d;
+    --code-bg: #161b22;
+    --inline-code-bg: #2a3036;
+    --accent: #4493f8;
+    --blockquote-bg: #161b22;
+    --ctl-hover: #3a434d;
+    --ctl-hover-fg: #e6edf3;
+    --window-border: #3a434d;
+    --syn-keyword: #ff7b72;
+    --syn-string: #a5d6ff;
+    --syn-comment: #8b949e;
+    --syn-number: #79c0ff;
+    --syn-type: #79c0ff;
+    --syn-function: #d2a8ff;
+    --syn-variable: #79c0ff;
+    --syn-punctuation: #6e7781;
+    --syn-error: #ff7b72;
+    --syn-tag: #7ee787;
+    --syn-attribute: #d2a8ff;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  overflow: hidden;
+}
+
+/* Каркас: тонкая панель с кнопками окна + документ во всю оставшуюся высоту.
+   Рамка 1px по краю окна: без неё граница не видна, когда окно на белом фоне. */
+.shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--window-border);
+}
+
+/* Строка заголовка без системного декора — контрастные кнопки окна.
+   Высота 42px: удобный хват и клики. */
+.titlebar {
+  flex: 0 0 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 0 10px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.title {
+  font-size: 13px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Иконка приложения в панели заголовка */
+.appicon {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.controls {
+  display: flex;
+}
+
+/* Кнопки окна: тёмные глифы на светлой панели (и наоборот в тёмной теме) */
+.ctl {
+  width: 46px;
+  height: 42px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+/* Заметный hover: подложка и смена цвета глифа */
+.ctl:hover {
+  background: var(--ctl-hover);
+  color: var(--ctl-hover-fg);
+}
+
+.ctl.close:hover {
+  background: #e81123;
+  color: #ffffff;
+}
+
+/* Полноширинный прокручиваемый контейнер: полоса прокрутки всегда у края окна,
+   даже когда центрированная колонка текста уже окна (развёрнутый режим). */
+.content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+/* Документ занимает всё пространство окна и прокручивается внутри него.
+   Ширина контента по умолчанию — 1100px (совпадает с шириной окна). */
+.markdown-body {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 2rem 4rem;
+  overflow-wrap: break-word;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  font-weight: 600;
+  line-height: 1.25;
+  margin: 1.5rem 0 0.75rem;
+}
+
+.markdown-body h1 {
+  font-size: 2em;
+}
+
+.markdown-body h2 {
+  font-size: 1.5em;
+}
+
+.markdown-body h3 {
+  font-size: 1.25em;
+}
+
+.markdown-body h4 {
+  font-size: 1em;
+}
+
+.markdown-body h5 {
+  font-size: 0.9em;
+}
+
+.markdown-body h6 {
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.markdown-body p {
+  margin: 0 0 1rem;
+}
+
+.markdown-body a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.markdown-body a:hover {
+  text-decoration: underline;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 2rem;
+  margin: 0 0 1rem;
+}
+
+.markdown-body li {
+  margin: 0.25rem 0;
+}
+
+/* Чекбоксы task-списков: 14x14px, радиус 2px, border 1px #e3e7eb, фон #eff2f5.
+   Отмеченный: полностью залит #818b98, внутри тонкая 2px белая галочка
+   со скруглёнными краями ровно по центру. */
+.markdown-body input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0 0.35rem 0 0;
+  border: 1px solid #e3e7eb;
+  border-radius: 2px;
+  background: #eff2f5;
+  /* Немного ниже базовой линии: опускает чекбокс на ~2px относительно 0.05em */
+  vertical-align: -0.1em;
+  position: relative;
+}
+
+.markdown-body input[type="checkbox"]:checked {
+  background: #818b98;
+  border-color: #818b98;
+}
+
+.markdown-body input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 5px;
+  height: 9px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+
+.markdown-body blockquote {
+  margin: 0;
+  padding: 0.5rem 1rem;  /* нижний отступ такой же, как сверху */
+  border-left: 0.25rem solid var(--border);
+  background: var(--blockquote-bg);
+  color: var(--muted);
+}
+
+/* Убираем пустой отступ внизу цитаты: последний ребёнок без нижнего margin */
+.markdown-body blockquote :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1rem;
+  overflow-x: auto;
+  line-height: 1.45;
+  font-family: 'SF Mono', ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.markdown-body code {
+  font-family: 'SF Mono', ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+  /* Фон inline-кода (одинарный бэктик): светлая тема — #ececef */
+  background: var(--inline-code-bg);
+  border-radius: 4px;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.9em;
+}
+
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* Защита от некорректной блочной отрисовки спанов подсветки (bash и др.):
+   явно возвращаем inline и убираем рамки/фон, чтобы слова не выстраивались
+   в столбик с рамками, а текст кода лился единой строкой. */
+.markdown-body pre code {
+  display: block;
+}
+
+.markdown-body pre code span {
+  display: inline;
+  border: 0;
+  background: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* Подсветка синтаксиса (syntect CSS-классы) — только в блоках кода */
+.markdown-body pre code .storage.type,
+.markdown-body pre code .keyword,
+.markdown-body pre code .support.function {
+  color: var(--syn-keyword);
+}
+
+.markdown-body pre code .string {
+  color: var(--syn-string);
+}
+
+.markdown-body pre code .comment {
+  color: var(--syn-comment);
+  font-style: italic;
+}
+
+.markdown-body pre code .constant {
+  color: var(--syn-number);
+}
+
+.markdown-body pre code .entity.name.function,
+.markdown-body pre code .variable.function {
+  color: var(--syn-function);
+}
+
+.markdown-body pre code .type {
+  color: var(--syn-type);
+}
+
+.markdown-body pre code .variable {
+  color: var(--syn-variable);
+}
+
+.markdown-body pre code .punctuation {
+  color: var(--syn-punctuation);
+}
+
+/* HTML/XML: имена тегов и атрибутов */
+.markdown-body pre code .entity.name.tag {
+  color: var(--syn-tag);
+}
+
+.markdown-body pre code .entity.other.attribute-name {
+  color: var(--syn-attribute);
+}
+
+.markdown-body pre code .invalid,
+.markdown-body pre code .error {
+  color: var(--syn-error);
+}
+
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 0 0 1rem;
+  display: block;
+  overflow-x: auto;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+}
+
+.markdown-body th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+
+.markdown-body img {
+  max-width: 100%;
+}
+
+.markdown-body hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1.5rem 0;
+}
+
+.markdown-body .notice {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+}

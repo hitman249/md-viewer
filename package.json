@@ -1,0 +1,11 @@
+{
+  "name": "md-viewer",
+  "private": false,
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4"
+  }
+}

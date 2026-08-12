@@ -1,0 +1,33 @@
+[package]
+name = "md-viewer"
+version = "0.1.0"
+description = "Компактный и производительный просмотрщик Markdown файлов"
+edition = "2021"
+rust-version = "1.74"
+
+[lib]
+name = "md_viewer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+comrak = { version = "0.54", features = ["syntect-fancy"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+opener = "0.8"
+
+# Максимально компактный исполняемый файл:
+# - opt-level "z" — оптимизация под размер (а не скорость);
+# - lto (fat) + codegen-units=1 — сквозная оптимизация и дедупликация кода;
+# - panic="abort" — без механизма размотки стека (убирает лишний код);
+# - strip=true — вырезать символы/отладочную информацию.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+overflow-checks = false

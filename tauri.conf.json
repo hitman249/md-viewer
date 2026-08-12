@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "md-viewer",
+  "version": "0.1.0",
+  "identifier": "com.mdviewer.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev --prefix frontend",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build --prefix frontend",
+    "frontendDist": "frontend/dist"
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage"],
+    "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
+    "category": "Utility",
+    "shortDescription": "Компактный просмотрщик Markdown"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Markdown Viewer",
+        "width": 1100,
+        "height": 800,
+        "center": true,
+        "resizable": true,
+        "decorations": false,
+        "minWidth": 400,
+        "minHeight": 300
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

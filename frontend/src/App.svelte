@@ -1,0 +1,106 @@
+<script>
+  import { onMount } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
+
+  // Окно без системного декора: системная рамка на этой системе рисуется оконным
+  // менеджером и не перекрашивается из приложения, поэтому кнопки и рамку рисуем сами.
+  // Для работы команд окна (minimize/toggleMaximize/close/startDragging/setTitle) в
+  // capabilities добавлены соответствующие permissions — без них вызовы молча отклонялись бы.
+  const appWindow = getCurrentWindow();
+
+  /** Готовый HTML, полученный после рендера markdown на стороне Rust. */
+  let html = '';
+
+  /** Имя открытого файла — выводится в title окна. */
+  let name = 'Markdown Viewer';
+
+  /** Текст ошибки, если файл не удалось прочитать или распарсить. */
+  let error = null;
+
+  /** Запрашивает у Rust-бэкенда содержимое файла, отрендеренное в HTML. */
+  async function load() {
+    try {
+      const doc = await invoke('read_markdown');
+      html = doc.html;
+      name = doc.name;
+      // Обновляем настоящий title окна (виден в таск-менеджерах и WM);
+      // сбой не должен мешать отображению документа.
+      appWindow.setTitle(name).catch(() => {});
+      document.title = name;
+    } catch (err) {
+      error = String(err);
+    }
+  }
+
+  // При монтировании компонента сразу открываем документ.
+  onMount(load);
+
+  // Обработка кликов по ссылкам:
+  // - http/https — открываем во внешнем браузере по умолчанию в системе;
+  // - локальный путь (в т.ч. относительный .md) — открываем в новом экземпляре программы;
+  // - прочие схемы (mailto:, tel:) — отдаём системному обработчику.
+  function onContentClick(event) {
+    const a = event.target.closest('a');
+    if (!a) return;
+    const href = a.getAttribute('href') || '';
+    event.preventDefault();
+    if (!href || href.startsWith('#')) return;
+    if (/^https?:\/\//i.test(href)) {
+      invoke('open_url', { url: href }).catch(() => {});
+      return;
+    }
+    if (/^[a-z]+:/i.test(href)) {
+      invoke('open_url', { url: href }).catch(() => {});
+      return;
+    }
+    invoke('open_md', { path: href }).catch(() => {});
+  }
+
+  // Перетаскивание безрамного окна: ручной startDragging (на Linux data-tauri-drag-region
+  // не работает и перехватывает клики). Кнопки управления не запускают перетаскивание.
+  function onTitlebarMouseDown(event) {
+    if (event.target.closest('.ctl')) return;
+    if (event.button === 0) {
+      appWindow.startDragging();
+    }
+  }
+</script>
+
+<div class="shell">
+  <header class="titlebar" onmousedown={onTitlebarMouseDown}>
+    <span class="title">
+      <img src="/icon.png" class="appicon" alt="" draggable="false" />
+      <span class="title-text">{name}</span>
+    </span>
+    <div class="controls">
+      <button class="ctl" aria-label="Свернуть" onclick={() => appWindow.minimize()}>
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+          <rect x="0" y="4" width="10" height="2" fill="currentColor" />
+        </svg>
+      </button>
+      <button class="ctl" aria-label="Развернуть" onclick={() => appWindow.toggleMaximize()}>
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+          <rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.5" />
+        </svg>
+      </button>
+      <button class="ctl close" aria-label="Закрыть" onclick={() => appWindow.close()}>
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+          <path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" stroke-width="1.5" fill="none" />
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- .content — полноширинный прокручиваемый контейнер: полоса прокрутки
+       всегда у края окна, а не рядом с центрированной колонкой текста. -->
+  <div class="content">
+    <main class="markdown-body" onclick={onContentClick}>
+      {#if error}
+        <div class="notice">{error}</div>
+      {:else}
+        {@html html}
+      {/if}
+    </main>
+  </div>
+</div>

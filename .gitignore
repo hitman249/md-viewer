@@ -1,0 +1,9 @@
+/target
+/task.txt
+.git
+/frontend/dist
+/frontend/node_modules
+/node_modules
+/.idea
+/AGENTS.md
+/.codegraph
