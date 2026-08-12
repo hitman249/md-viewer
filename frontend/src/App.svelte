@@ -1,6 +1,6 @@
 <script>
-  import { onMount } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
+  import { onMount, tick } from 'svelte';
+  import { invoke, convertFileSrc } from '@tauri-apps/api/core';
   import { getCurrentWindow } from '@tauri-apps/api/window';
 
   // Окно без системного декора: системная рамка на этой системе рисуется оконным
@@ -18,19 +18,59 @@
   /** Текст ошибки, если файл не удалось прочитать или распарсить. */
   let error = null;
 
+  /** Абсолютный путь к папке открытого документа — база для относительных путей картинок. */
+  let baseDir = '';
+
   /** Запрашивает у Rust-бэкенда содержимое файла, отрендеренное в HTML. */
   async function load() {
     try {
       const doc = await invoke('read_markdown');
       html = doc.html;
       name = doc.name;
+      baseDir = doc.base_dir;
       // Обновляем настоящий title окна (виден в таск-менеджерах и WM);
       // сбой не должен мешать отображению документа.
       appWindow.setTitle(name).catch(() => {});
       document.title = name;
+      // Дожидаемся, пока Svelte вставит отрендеренный HTML в DOM, затем
+      // переписываем src локальных картинок на asset-URL.
+      await tick();
+      rewriteImageSrcs();
     } catch (err) {
       error = String(err);
     }
+  }
+
+  /** Резолвит относительный путь к картинке в абсолютный относительно baseDir. */
+  function resolveImagePath(rel) {
+    if (rel.startsWith('/')) return rel;
+    const out = baseDir.split('/').slice();
+    for (const part of rel.split('/')) {
+      if (!part || part === '.') continue;
+      if (part === '..') out.pop();
+      else out.push(part);
+    }
+    return out.join('/');
+  }
+
+  /** Переписывает src локальных <img>, чтобы они грузились через asset-протокол Tauri.
+   *  Относительные пути comrak оставляет как есть — они резолвятся относительно
+   *  origin вебвью (tauri://localhost), а не папки документа, поэтому без этой
+   *  правки картинки не отображаются. Внешние/встроенные схемы не трогаем. */
+  function rewriteImageSrcs() {
+    document.querySelectorAll('.markdown-body img').forEach((img) => {
+      const src = img.getAttribute('src') || '';
+      if (!src) return;
+      if (/^(https?|data|asset|file|ftp|mailto):/i.test(src)) return;
+      let raw;
+      try {
+        // src в HTML уже процент-закодирован comrak'ом; восстанавливаем исходный путь.
+        raw = decodeURIComponent(src);
+      } catch {
+        raw = src;
+      }
+      img.src = convertFileSrc(resolveImagePath(raw));
+    });
   }
 
   // При монтировании компонента сразу открываем документ.

@@ -1,5 +1,7 @@
 # md-viewer
 
+![screenshot](screenshot.png)
+
 A compact, high-performance desktop Markdown viewer built with **Rust + Tauri 2 + Svelte**. Open a `.md` file and it renders the document full-screen across the entire window — no menus, no clutter, just content.
 
 ## Features

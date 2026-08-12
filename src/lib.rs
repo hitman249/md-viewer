@@ -122,11 +122,13 @@ fn alias_code_languages(source: &str) -> String {
     out
 }
 
-/// Результат чтения файла: имя документа (для title окна) и готовый HTML.
+/// Результат чтения файла: имя документа (для title окна), готовый HTML и базовая
+/// директория — по ней фронтенд разрешает относительные пути к локальным картинкам.
 #[derive(Serialize)]
 struct MarkdownDoc {
     name: String,
     html: String,
+    base_dir: String,
 }
 
 /// Читает markdown-файл по сохранённому пути и возвращает имя + готовый HTML.
@@ -174,9 +176,18 @@ fn read_markdown(state: State<AppState>) -> Result<MarkdownDoc, String> {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "Markdown".to_string());
 
+    // База для относительных путей к картинкам: папка открытого документа.
+    // md_path уже приведён к абсолютному пути (canonicalize в first_arg_path),
+    // поэтому parent тоже абсолютен.
+    let base_dir = md_path
+        .parent()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
     Ok(MarkdownDoc {
         name,
         html: markdown_to_html_with_plugins(&source, &opts, &plugins),
+        base_dir,
     })
 }
 
