@@ -100,6 +100,15 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+
+/* Длинное имя файла не должно выдавливать кнопки за край окна */
+.title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Иконка приложения в панели заголовка */
@@ -112,6 +121,7 @@ body {
 
 .controls {
   display: flex;
+  flex-shrink: 0;
 }
 
 /* Кнопки окна: тёмные глифы на светлой панели (и наоборот в тёмной теме) */
@@ -128,15 +138,48 @@ body {
   transition: background-color 0.12s ease, color 0.12s ease;
 }
 
-/* Заметный hover: подложка и смена цвета глифа */
-.ctl:hover {
+/* Заметный hover: подложка и смена цвета глифа; заблокированные кнопки не реагируют */
+.ctl:hover:not(:disabled) {
   background: var(--ctl-hover);
   color: var(--ctl-hover-fg);
 }
 
-.ctl.close:hover {
+.ctl.close:hover:not(:disabled) {
   background: #e81123;
   color: #ffffff;
+}
+
+/* Кнопка копирования HTML-разметки: единственное действие, подпись вместо глифа */
+.ctl.action {
+  width: auto;
+  padding: 0 12px;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Иконка копирования фиксирована по ширине: подпись рядом меняется, иконка — нет */
+.action-icon {
+  flex-shrink: 0;
+}
+
+/* Подпись фиксируем по ширине самой длинной формулировки, чтобы смена текста
+   на «Скопировано» не дёргала всю панель заголовка */
+.action-label {
+  min-width: 114px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Неудачное копирование подсвечиваем тем же красным, что и закрытие окна */
+.ctl.action.error {
+  color: #e81123;
+}
+
+/* Пока документ не прочитан, кнопка копирования недоступна */
+.ctl:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 /* Полноширинный прокручиваемый контейнер: полоса прокрутки всегда у края окна,

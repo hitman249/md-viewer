@@ -2021,6 +2021,7 @@ name = "md-viewer"
 version = "0.1.0"
 dependencies = [
  "comrak",
+ "gtk",
  "opener",
  "serde",
  "serde_json",
