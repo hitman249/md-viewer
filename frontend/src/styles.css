@@ -76,6 +76,7 @@ body {
    Рамка 1px по краю окна: без неё граница не видна, когда окно на белом фоне. */
 .shell {
   height: 100%;
+  position: relative; /* база для абсолютно позиционированной панели поиска */
   display: flex;
   flex-direction: column;
   border: 1px solid var(--window-border);
@@ -187,6 +188,107 @@ body {
 .content {
   flex: 1 1 auto;
   overflow-y: auto;
+}
+
+/* Панель поиска по документу (Ctrl+F): висит под заголовком справа, не занимает
+   места в потоке и не сдвигает текст. */
+.findbar {
+  position: absolute;
+  top: 50px;
+  right: 14px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 28px);
+  padding: 4px 6px 4px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+}
+
+.findbar:focus-within {
+  border-color: var(--accent);
+}
+
+.findbar-icon {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.findbar-input {
+  flex: 0 1 190px;
+  min-width: 90px;
+  padding: 2px 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+}
+
+.findbar-input::placeholder {
+  color: var(--muted);
+}
+
+.findbar-count {
+  flex-shrink: 0;
+  min-width: 62px;
+  font-size: 11px;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.findbar-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.findbar-btn:hover:not(:disabled) {
+  background: var(--ctl-hover);
+  color: var(--ctl-hover-fg);
+}
+
+.findbar-btn:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+/* Включённый учёт регистра — заливка акцентом */
+.findbar-btn.active {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+/* Подсветка результатов поиска: фон задан явно, текст принудительно тёмный —
+   так фрагмент читается и на инлайновом коде, и в тёмной теме. */
+.markdown-body mark.search-hit {
+  background: #ffdf5d;
+  color: #1f2328;
+  padding: 0;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(214, 158, 46, 0.55);
+}
+
+/* Текущее совпадение — ярче и с более заметной обводкой */
+.markdown-body mark.search-current {
+  background: #ff9d1e;
+  box-shadow: 0 0 0 2px rgba(217, 130, 43, 0.9);
 }
 
 /* Документ занимает всё пространство окна и прокручивается внутри него.

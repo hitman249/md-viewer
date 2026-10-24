@@ -122,20 +122,26 @@ enum CodeRender {
     Wiki,
 }
 
-/// Блок кода для вики: рамка, фон и моноширинный шрифт. Цвета задаём токенами
+/// Блок кода для вики: рамка, фон и моноширинный шрифт. Фон и рамку задаём токенами
 /// Atlassian Design System: Confluence заменяет литеральные цвета своими токенами,
 /// а готовые токены сохраняет; в скобках — наш цвет как fallback для вики без токенов.
-/// В font-family только имена без пробелов: Confluence берёт пробельные имена в кавычки
-/// внутри style="", из-за чего атрибут рвётся на части.
-const WIKI_PRE_STYLE: &str = "background-color:var(--ds-surface-sunken,#f6f8fa);border:1px solid var(--ds-border,#d0d7de);border-radius:6px;padding:12px 16px;overflow-x:auto;white-space:pre;line-height:1.45;color:var(--ds-text-code-default,#1f2328);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.9em;margin:0 0 16px;";
+/// Цвет текста задаём только токеном, без своего hex: hex не переключается вместе с темой
+/// Confluence, и в тёмной теме тёмный fallback нечитаем на тёмном фоне; если токен
+/// не определён, объявление недействительно и текст наследует цвет темы. В font-family
+/// только имена без пробелов: Confluence берёт пробельные имена в кавычки внутри style="",
+/// из-за чего атрибут рвётся на части. Отступ сверху задаём самому блоку (как у цитаты):
+/// в вики предыдущий элемент может не давать своего нижнего отступа, и блок липнет к нему;
+/// нижний отступ оставляем — он даёт зазор перед следующим элементом.
+const WIKI_PRE_STYLE: &str = "background-color:var(--ds-surface-sunken,#f6f8fa);border:1px solid var(--ds-border,#d0d7de);border-radius:6px;padding:12px 16px;overflow-x:auto;white-space:pre;line-height:1.45;color:var(--ds-text-code-default);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.9em;margin:16px 0 16px;";
 
 /// Внутренний <code> блока кода: сбрасываем стили вики, чтобы фон и рамку задавал
 /// только <pre>, а цвета текста приходили от подсветки.
 const WIKI_BLOCK_CODE_STYLE: &str = "display:block;background:none;border:0;padding:0;color:inherit;white-space:inherit;font-family:inherit;font-size:inherit;";
 
 /// Инлайновый <code>: comrak рендерит его без атрибутов, поэтому стиль подставляем
-/// после рендера — иначе инлайновый код в вики выглядит как обычный текст.
-const WIKI_INLINE_CODE_STYLE: &str = "background-color:var(--ds-background-neutral,#ececef);border-radius:4px;padding:2px 6px;color:var(--ds-text-code-default,#1f2328);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.9em;";
+/// после рендера — иначе инлайновый код в вики выглядит как обычный текст. Цвет текста —
+/// только токеном, как у блока кода: свой hex не переключается вместе с темой Confluence.
+const WIKI_INLINE_CODE_STYLE: &str = "background-color:var(--ds-background-neutral,#ececef);border-radius:4px;padding:2px 6px;color:var(--ds-text-code-default);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.9em;";
 
 /// Цитата для вики: полоса слева, фон и приглушённый текст — как в окне. Цвета — токенами
 /// Atlassian с нашим fallback, как у блоков кода. Отступ сверху задаём самому блоку:
@@ -146,34 +152,36 @@ const WIKI_BLOCKQUOTE_STYLE: &str = "margin:16px 0 0;padding:8px 16px;border-lef
 /// поэтому оформляем их отдельно — как обычный блок кода (в окне он выглядит так же).
 const MATH_BLOCK_OPEN_TAG: &str = "<pre><code class=\"language-math\" data-math-style=\"display\">";
 
-/// Цвета подсветки для классов syntect: слово scope → токен Confluence + наш цвет как
-/// fallback. Порядок проверок — как приоритет селекторов в styles.css приложения:
+/// Цвета подсветки для классов syntect: слово scope → токен Confluence. Своего hex нет:
+/// он не переключается вместе с темой Confluence, и в тёмной теме тёмный fallback нечитаем
+/// на тёмном фоне; если токен не определён, объявление недействительно и текст наследует
+/// цвет темы. Порядок проверок — как приоритет селекторов в styles.css приложения:
 /// специфичные scope-классы раньше общих (variable.function красится как функция,
 /// storage.type — как ключевое слово).
-const CODE_COLOR_RULES: [(&str, &str, &str); 15] = [
-    ("punctuation", "--ds-text-code-operators", "#6e7781"),
-    ("comment", "--ds-text-code-comments", "#6a737d"),
-    ("string", "--ds-text-code-strings", "#032f62"),
-    ("invalid", "--ds-text-danger", "#d73a49"),
-    ("error", "--ds-text-danger", "#d73a49"),
-    ("storage", "--ds-text-code-keywords", "#d73a49"),
-    ("keyword", "--ds-text-code-keywords", "#d73a49"),
-    ("support", "--ds-text-code-keywords", "#d73a49"),
-    ("constant", "--ds-text-code-numbers", "#005cc5"),
-    ("numeric", "--ds-text-code-numbers", "#005cc5"),
-    ("attribute-name", "--ds-text-code-accent-1", "#6f42c1"),
-    ("function", "--ds-text-code-functions", "#6f42c1"),
-    ("tag", "--ds-text-code-tags", "#22863a"),
-    ("variable", "--ds-text-code-accent-1", "#e36209"),
-    ("type", "--ds-text-code-accent-2", "#005cc5"),
+const CODE_COLOR_RULES: [(&str, &str); 15] = [
+    ("punctuation", "--ds-text-code-operators"),
+    ("comment", "--ds-text-code-comments"),
+    ("string", "--ds-text-code-strings"),
+    ("invalid", "--ds-text-danger"),
+    ("error", "--ds-text-danger"),
+    ("storage", "--ds-text-code-keywords"),
+    ("keyword", "--ds-text-code-keywords"),
+    ("support", "--ds-text-code-keywords"),
+    ("constant", "--ds-text-code-numbers"),
+    ("numeric", "--ds-text-code-numbers"),
+    ("attribute-name", "--ds-text-code-accent-1"),
+    ("function", "--ds-text-code-functions"),
+    ("tag", "--ds-text-code-tags"),
+    ("variable", "--ds-text-code-accent-1"),
+    ("type", "--ds-text-code-accent-2"),
 ];
 
-/// Подбирает цвет подсветки для строки классов syntect (атомы scope через пробел).
-fn wiki_code_color(classes: &str) -> Option<(&'static str, &'static str)> {
+/// Подбирает токен цвета подсветки для строки классов syntect (атомы scope через пробел).
+fn wiki_code_color(classes: &str) -> Option<&'static str> {
     CODE_COLOR_RULES
         .iter()
-        .find(|(word, _, _)| classes.split(' ').any(|part| part == *word))
-        .map(|(_, token, fallback)| (*token, *fallback))
+        .find(|(word, _)| classes.split(' ').any(|part| part == *word))
+        .map(|(_, token)| *token)
 }
 
 /// Адаптер подсветки блоков кода: подменяет язык фенса на грамматику, которую знает
@@ -258,7 +266,8 @@ fn style_wiki_tags(html: String) -> String {
 }
 
 /// Подставляет инлайновые цвета в спаны подсветки: вики не подключает CSS приложения,
-/// поэтому классы syntect в ней бесполезны. Спаны с class="" в разметке пишет только
+/// поэтому классы syntect в ней бесполезны. Цвета — только токенами Confluence, без
+/// нашего hex (см. CODE_COLOR_RULES). Спаны с class="" в разметке пишет только
 /// syntect (сырой HTML из исходника comrak экранирует), поэтому разбор безопасен.
 fn style_wiki_spans(html: String) -> String {
     const SPAN_OPEN: &str = "<span class=\"";
@@ -277,11 +286,9 @@ fn style_wiki_spans(html: String) -> String {
         out.push_str(SPAN_OPEN);
         out.push_str(classes);
         out.push('"');
-        if let Some((token, fallback)) = wiki_code_color(classes) {
+        if let Some(token) = wiki_code_color(classes) {
             out.push_str(" style=\"color:var(");
             out.push_str(token);
-            out.push(',');
-            out.push_str(fallback);
             out.push_str(")\"");
         }
         out.push('>');

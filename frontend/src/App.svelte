@@ -49,6 +49,37 @@
   /** Таймер сброса подписи кнопки после показа результата. */
   let copyResetTimer = null;
 
+  /** Классы, которыми помечаются все найденные фрагменты и текущий из них. */
+  const SEARCH_HIT_CLASS = 'search-hit';
+  const SEARCH_CURRENT_CLASS = 'search-current';
+
+  /** Теги, текст внутри которых заведомо не является содержимым документа. */
+  const SEARCH_SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA']);
+
+  /** Панель поиска открыта (Ctrl+F). */
+  let searchOpen = false;
+
+  /** Строка поиска. */
+  let query = '';
+
+  /** Учитывать регистр при поиске. */
+  let caseSensitive = false;
+
+  /** Найденные <mark>-элементы в порядке документа. */
+  let hits = [];
+
+  /** Индекс текущего совпадения в hits; -1 — совпадений нет. */
+  let currentHit = -1;
+
+  /** Подпись счётчика совпадений в панели поиска. */
+  let hitStatus = '';
+
+  /** Корневой элемент документа — граница поиска (bind:this). */
+  let documentRoot;
+
+  /** Поле ввода панели поиска (bind:this). */
+  let searchInput;
+
   /** Запрашивает у Rust-бэкенда содержимое файла, отрендеренное в HTML. */
   async function load() {
     ready = false;
@@ -66,6 +97,8 @@
       // переписываем src локальных картинок на asset-URL.
       await tick();
       rewriteImageSrcs();
+      // Документ перерисован из html — подсветка поиска потеряна, повторяем поиск.
+      if (searchOpen && query) runSearch();
     } catch (err) {
       error = String(err);
     }
@@ -105,6 +138,13 @@
 
   // При монтировании компонента сразу открываем документ.
   onMount(load);
+
+  // Глобальные сочетания поиска: Ctrl+F (Cmd+F) открывает панель, Esc — закрывает.
+  // Слушатель на window, чтобы поиск работал из любого места документа.
+  onMount(() => {
+    window.addEventListener('keydown', onGlobalKeydown);
+    return () => window.removeEventListener('keydown', onGlobalKeydown);
+  });
 
   // Обработка кликов по ссылкам:
   // - http/https — открываем во внешнем браузере по умолчанию в системе;
@@ -163,6 +203,201 @@
 
   // Снимаем таймер сброса подписи, чтобы коллбек не сработал после размонтирования.
   onDestroy(() => clearTimeout(copyResetTimer));
+
+  /** Подпись счётчика: пусто без строки, иначе «номер / всего» либо «Нет совпадений». */
+  function formatHitStatus(rawQuery, total, index) {
+    if (!rawQuery) return '';
+    if (total === 0) return 'Нет совпадений';
+    return `${index + 1} / ${total}`;
+  }
+
+  // Счётчик пересчитывается при смене строки, числа совпадений и текущего индекса.
+  $: hitStatus = formatHitStatus(query, hits.length, currentHit);
+
+  /** Экранирует спецсимволы регулярного выражения: строка поиска — литерал. */
+  function escapeRegExp(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  /** Готовит регулярное выражение поиска; null — литерал не скомпилировался. */
+  function buildSearchRegex(text, matchCase) {
+    try {
+      return new RegExp(escapeRegExp(text), matchCase ? 'gu' : 'giu');
+    } catch {
+      // Экзотическая строка (например, одинокий суррогат) не должна ронять поиск.
+      return null;
+    }
+  }
+
+  /** Собирает текстовые узлы документа, пропуская служебные теги и пустой текст. */
+  function collectSearchableTextNodes(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+        if (SEARCH_SKIP_TAGS.has(node.parentElement?.tagName)) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    return nodes;
+  }
+
+  /** Обёртывает все вхождения regex в тексте узла элементами <mark>.
+   *  Совпадение ищется в пределах одного текстового узла: фраза, разбитая
+   *  подсветкой синтаксиса на несколько <span>, целиком не найдётся. */
+  function markMatchesInTextNode(node, regex) {
+    const text = node.nodeValue;
+    const ranges = [];
+    regex.lastIndex = 0;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      if (match[0].length === 0) {
+        regex.lastIndex += 1;
+        continue;
+      }
+      ranges.push([match.index, match.index + match[0].length]);
+    }
+    if (ranges.length === 0) return;
+
+    const fragment = document.createDocumentFragment();
+    let cursor = 0;
+    for (const [start, end] of ranges) {
+      if (start > cursor) fragment.appendChild(document.createTextNode(text.slice(cursor, start)));
+      const mark = document.createElement('mark');
+      mark.className = SEARCH_HIT_CLASS;
+      mark.textContent = text.slice(start, end);
+      fragment.appendChild(mark);
+      cursor = end;
+    }
+    if (cursor < text.length) fragment.appendChild(document.createTextNode(text.slice(cursor)));
+    node.parentNode.replaceChild(fragment, node);
+  }
+
+  /** Убирает подсветку: <mark> заменяется исходным текстом, соседние узлы склеиваются,
+   *  поэтому DOM возвращается к виду, который отдал comrak. */
+  function clearHighlightMarks() {
+    if (!documentRoot) return;
+    const marks = documentRoot.querySelectorAll(`mark.${SEARCH_HIT_CLASS}`);
+    if (marks.length === 0) return;
+    const parents = new Set();
+    for (const mark of marks) {
+      const parent = mark.parentNode;
+      if (!parent) continue;
+      parents.add(parent);
+      parent.replaceChild(document.createTextNode(mark.textContent), mark);
+    }
+    parents.forEach((parent) => parent.normalize());
+  }
+
+  /** Подсвечивает текущее совпадение и подматывает контейнер документа к нему. */
+  function showCurrentHit() {
+    hits.forEach((mark, index) => {
+      mark.classList.toggle(SEARCH_CURRENT_CLASS, index === currentHit);
+    });
+    const current = hits[currentHit];
+    if (current) current.scrollIntoView({ block: 'center' });
+  }
+
+  /** Переход к следующему (delta=1) или предыдущему (delta=-1) совпадению по кругу. */
+  function stepSearch(delta) {
+    if (hits.length === 0) return;
+    currentHit = (currentHit + delta + hits.length) % hits.length;
+    showCurrentHit();
+  }
+
+  /** Выбирает стартовое совпадение: первое видимое в окне или ближайшее ниже него
+   *  (если ниже ничего нет — первое в документе), чтобы поиск не прыгал в начало. */
+  function pickInitialHit() {
+    const viewport = documentRoot.closest('.content');
+    if (!viewport || hits.length === 0) return 0;
+    const viewTop = viewport.getBoundingClientRect().top;
+    const index = hits.findIndex((hit) => hit.getBoundingClientRect().bottom >= viewTop);
+    return index === -1 ? 0 : index;
+  }
+
+  /** Пересобирает подсветку под текущую строку и переходит к стартовому совпадению. */
+  function runSearch() {
+    clearHighlightMarks();
+    hits = [];
+    currentHit = -1;
+    if (!query || !documentRoot) return;
+    const regex = buildSearchRegex(query, caseSensitive);
+    if (!regex) return;
+    for (const node of collectSearchableTextNodes(documentRoot)) {
+      markMatchesInTextNode(node, regex);
+    }
+    hits = Array.from(documentRoot.querySelectorAll(`mark.${SEARCH_HIT_CLASS}`));
+    currentHit = hits.length > 0 ? pickInitialHit() : -1;
+    if (currentHit >= 0) showCurrentHit();
+  }
+
+  /** Ввод в поле поиска: обновляет строку и сразу пересобирает подсветку. */
+  function onSearchInput(event) {
+    query = event.currentTarget.value;
+    runSearch();
+  }
+
+  /** Enter/Shift+Enter — следующее/предыдущее совпадение, Esc — закрыть панель. */
+  function onSearchKeydown(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      stepSearch(event.shiftKey ? -1 : 1);
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeSearch();
+    }
+  }
+
+  /** Переключает учёт регистра и повторяет поиск по уже введённой строке. */
+  function toggleCaseSensitive() {
+    caseSensitive = !caseSensitive;
+    if (query) runSearch();
+    focusSearchInput();
+  }
+
+  /** Возвращает фокус в поле поиска (после клика по кнопкам панели). */
+  function focusSearchInput() {
+    searchInput?.focus();
+  }
+
+  /** Открывает панель поиска и ставит фокус в поле (Ctrl+F). */
+  async function openSearch() {
+    searchOpen = true;
+    await tick();
+    if (!searchInput) return;
+    searchInput.focus();
+    searchInput.select();
+  }
+
+  /** Закрывает панель и снимает подсветку; документ остаётся на текущем совпадении. */
+  function closeSearch() {
+    if (!searchOpen) return;
+    clearHighlightMarks();
+    searchOpen = false;
+    query = '';
+    hits = [];
+    currentHit = -1;
+  }
+
+  /** Горячие клавиши: Ctrl+F (Cmd+F) открывает поиск, Esc закрывает панель. */
+  function onGlobalKeydown(event) {
+    const findShortcut =
+      (event.ctrlKey || event.metaKey) &&
+      !event.altKey &&
+      (event.code === 'KeyF' || event.key.toLowerCase() === 'f');
+    if (findShortcut) {
+      event.preventDefault();
+      openSearch();
+      return;
+    }
+    if (event.key === 'Escape' && searchOpen) {
+      event.preventDefault();
+      closeSearch();
+    }
+  }
 </script>
 
 <div class="shell">
@@ -204,10 +439,72 @@
     </div>
   </header>
 
+  {#if searchOpen}
+    <div class="findbar" role="search" aria-label="Поиск по документу">
+      <svg class="findbar-icon" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+        <circle cx="6" cy="6" r="4.25" fill="none" stroke="currentColor" stroke-width="1.4" />
+        <path d="M9.3 9.3 L12.6 12.6" stroke="currentColor" stroke-width="1.4" fill="none" />
+      </svg>
+      <input
+        bind:this={searchInput}
+        class="findbar-input"
+        type="text"
+        placeholder="Найти в документе"
+        spellcheck="false"
+        autocomplete="off"
+        aria-label="Строка поиска по документу"
+        oninput={onSearchInput}
+        onkeydown={onSearchKeydown}
+      />
+      <span class="findbar-count" aria-live="polite">{hitStatus}</span>
+      <button
+        class="findbar-btn"
+        class:active={caseSensitive}
+        title="Учитывать регистр"
+        aria-label="Учитывать регистр"
+        aria-pressed={caseSensitive}
+        onclick={toggleCaseSensitive}
+      >Aa</button>
+      <button
+        class="findbar-btn"
+        title="Предыдущее совпадение (Shift+Enter)"
+        aria-label="Предыдущее совпадение"
+        disabled={hits.length === 0}
+        onclick={() => { stepSearch(-1); focusSearchInput(); }}
+      >
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+          <path d="M5 1 L1.5 6 H8.5 Z" fill="currentColor" />
+        </svg>
+      </button>
+      <button
+        class="findbar-btn"
+        title="Следующее совпадение (Enter)"
+        aria-label="Следующее совпадение"
+        disabled={hits.length === 0}
+        onclick={() => { stepSearch(1); focusSearchInput(); }}
+      >
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+          <path d="M5 9 L1.5 4 H8.5 Z" fill="currentColor" />
+        </svg>
+      </button>
+      <button
+        class="findbar-btn"
+        title="Закрыть (Esc)"
+        aria-label="Закрыть поиск"
+        onclick={closeSearch}
+      >
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+          <path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" stroke-width="1.5" fill="none" />
+        </svg>
+      </button>
+    </div>
+  {/if}
+
   <!-- .content — полноширинный прокручиваемый контейнер: полоса прокрутки
        всегда у края окна, а не рядом с центрированной колонкой текста. -->
   <div class="content">
-    <main class="markdown-body" onclick={onContentClick}>
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
+    <main class="markdown-body" bind:this={documentRoot} onclick={onContentClick}>
       {#if error}
         <div class="notice">{error}</div>
       {:else}
