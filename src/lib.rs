@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use comrak::{
@@ -300,13 +300,54 @@ fn style_wiki_spans(html: String) -> String {
     out
 }
 
-/// Результат чтения файла: имя документа (для title окна), готовый HTML и базовая
-/// директория — по ней фронтенд разрешает относительные пути к локальным картинкам.
+/// Результат чтения файла: имя документа (для title окна), готовый HTML, базовая
+/// директория (по ней фронтенд разрешает относительные пути к локальным картинкам),
+/// исходник для редактора и ревизия файла для отслеживания внешних изменений.
 #[derive(Serialize)]
 struct MarkdownDoc {
     name: String,
     html: String,
     base_dir: String,
+    source: String,
+    revision: String,
+}
+
+/// Ревизия содержимого файла: FNV-1a по байтам. Хеш не зависит от mtime и его
+/// разрешения, поэтому изменение фиксируется, даже если файл перезаписан
+/// с той же длиной в ту же секунду. Сравнивается только внутри сессии.
+fn content_revision(bytes: &[u8]) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for &byte in bytes {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// Собирает документ из пути и уже прочитанного исходника: имя, HTML, базу для
+/// картинок, исходник редактора и ревизию. Общий путь для чтения и записи файла.
+fn build_document(md_path: &Path, source: String) -> MarkdownDoc {
+    // comrak — CommonMark/GFM-совместимый парсер; рендер на стороне Rust
+    // компактнее и производительнее, чем парсинг в браузере.
+    let html = render_html(&source, CodeRender::Screen);
+
+    // Имя файла для заголовка окна: последний компонент пути.
+    let name = md_path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "Markdown".to_string());
+
+    // База для относительных путей к картинкам: папка открытого документа.
+    // md_path уже приведён к абсолютному пути (canonicalize в first_arg_path),
+    // поэтому parent тоже абсолютен.
+    let base_dir = md_path
+        .parent()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    let revision = content_revision(source.as_bytes());
+
+    MarkdownDoc { name, html, base_dir, source, revision }
 }
 
 /// Настройки парсера, общие для экранного просмотра и копирования разметки:
@@ -349,24 +390,7 @@ fn render_html(source: &str, render: CodeRender) -> String {
 #[tauri::command]
 fn read_markdown(state: State<AppState>) -> Result<MarkdownDoc, String> {
     let (md_path, source) = read_document(&state)?;
-
-    // comrak — CommonMark/GFM-совместимый парсер; рендер на стороне Rust
-    // компактнее и производительнее, чем парсинг в браузере.
-    let html = render_html(&source, CodeRender::Screen);
-
-    // Имя файла для заголовка окна: последний компонент пути.
-    let name = md_path
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "Markdown".to_string());
-
-    // База для относительных путей к картинкам: папка открытого документа.
-    // md_path уже приведён к абсолютному пути (canonicalize в first_arg_path),
-    // поэтому parent тоже абсолютен.
-    let base_dir = md_path
-        .parent()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    let doc = build_document(&md_path, source);
 
     // Снимок исходника: из него рендерится разметка для вики — она должна
     // совпадать с показанным документом, даже если файл на диске изменился.
@@ -374,9 +398,52 @@ fn read_markdown(state: State<AppState>) -> Result<MarkdownDoc, String> {
         .source
         .lock()
         .map_err(|_| "Ошибка блокировки внутреннего состояния".to_string())?;
-    *snapshot = Some(source);
+    *snapshot = Some(doc.source.clone());
 
-    Ok(MarkdownDoc { name, html, base_dir })
+    Ok(doc)
+}
+
+/// Возвращает ревизию содержимого файла на диске. Фронтенд опрашивает её,
+/// чтобы заметить внешнее изменение открытого документа.
+#[tauri::command]
+fn markdown_revision(state: State<AppState>) -> Result<String, String> {
+    let md_path = state
+        .md_path
+        .lock()
+        .map_err(|_| "Ошибка блокировки внутреннего состояния".to_string())?
+        .clone()
+        .ok_or_else(|| "Не передан путь к .md файлу".to_string())?;
+
+    let bytes = fs::read(&md_path)
+        .map_err(|err| format!("Не удалось прочитать файл {}: {}", md_path.display(), err))?;
+    Ok(content_revision(&bytes))
+}
+
+/// Сохраняет текст редактора в открытый файл и возвращает уже перерендеренный
+/// документ, чтобы окно сразу показало новое содержимое после выхода из редактора.
+#[tauri::command]
+fn write_markdown(state: State<AppState>, content: String) -> Result<MarkdownDoc, String> {
+    let md_path = state
+        .md_path
+        .lock()
+        .map_err(|_| "Ошибка блокировки внутреннего состояния".to_string())?
+        .clone()
+        .ok_or_else(|| "Не передан путь к .md файлу".to_string())?;
+
+    fs::write(&md_path, content.as_bytes())
+        .map_err(|err| format!("Не удалось сохранить файл {}: {}", md_path.display(), err))?;
+
+    let doc = build_document(&md_path, content);
+
+    // Снимок для копирования HTML-разметки должен соответствовать
+    // только что сохранённому содержимому.
+    let mut snapshot = state
+        .source
+        .lock()
+        .map_err(|_| "Ошибка блокировки внутреннего состояния".to_string())?;
+    *snapshot = Some(doc.source.clone());
+
+    Ok(doc)
 }
 
 /// Копирует в системный буфер обмена HTML-разметку тела документа — формат,
@@ -426,6 +493,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             read_markdown,
+            markdown_revision,
+            write_markdown,
             copy_markdown_html,
             open_url,
             open_md

@@ -22,6 +22,22 @@
   --syn-error: #d73a49;
   --syn-tag: #22863a;
   --syn-attribute: #6f42c1;
+  --md-heading: #0550ae;
+  --md-strong: #0a3069;
+  --md-em: #953800;
+  --md-code-text: #0a3069;
+  --md-code-block: #24292f;
+  --md-fence: #6a737d;
+  --md-link: #0969da;
+  --md-image: #8250df;
+  --md-url: #6a737d;
+  --md-quote: #59636e;
+  --md-list: #d73a49;
+  --md-task: #0969da;
+  --md-marker: #8b949e;
+  --md-hr: #8b949e;
+  --md-escape: #8250df;
+  --md-html: #116329;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -48,6 +64,22 @@
     --syn-error: #ff7b72;
     --syn-tag: #7ee787;
     --syn-attribute: #d2a8ff;
+    --md-heading: #79c0ff;
+    --md-strong: #a5d6ff;
+    --md-em: #ffa657;
+    --md-code-text: #a5d6ff;
+    --md-code-block: #e6edf3;
+    --md-fence: #8b949e;
+    --md-link: #4493f8;
+    --md-image: #d2a8ff;
+    --md-url: #9198a1;
+    --md-quote: #9198a1;
+    --md-list: #ff7b72;
+    --md-task: #79c0ff;
+    --md-marker: #6e7781;
+    --md-hr: #6e7781;
+    --md-escape: #d2a8ff;
+    --md-html: #7ee787;
   }
 }
 
@@ -150,7 +182,8 @@ body {
   color: #ffffff;
 }
 
-/* Кнопка копирования HTML-разметки: единственное действие, подпись вместо глифа */
+/* Кнопки действий (копирование/редактирование/сохранение/просмотр):
+   иконка и подпись вместо квадратной кнопки окна */
 .ctl.action {
   width: auto;
   padding: 0 12px;
@@ -159,7 +192,7 @@ body {
   color: var(--muted);
 }
 
-/* Иконка копирования фиксирована по ширине: подпись рядом меняется, иконка — нет */
+/* Иконка действия фиксирована по ширине: подпись рядом меняется, иконка — нет */
 .action-icon {
   flex-shrink: 0;
 }
@@ -172,7 +205,7 @@ body {
   white-space: nowrap;
 }
 
-/* Неудачное копирование подсвечиваем тем же красным, что и закрытие окна */
+/* Неудачное действие подсвечиваем тем же красным, что и закрытие окна */
 .ctl.action.error {
   color: #e81123;
 }
@@ -188,6 +221,196 @@ body {
 .content {
   flex: 1 1 auto;
   overflow-y: auto;
+}
+
+/* В режиме редактирования контейнер отдаёт всю высоту редактору: прокрутка
+   живёт внутри textarea, а не в общем контейнере документа. */
+.content.editing {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Документ остаётся в DOM (чтобы ссылки и картинки не пересоздавались зря),
+   но в редакторе скрыт. */
+.markdown-body.preview-hidden {
+  display: none;
+}
+
+/* Текстовый редактор Markdown: прозрачная textarea над оверлеем подсветки.
+   Оба слоя обязаны иметь одинаковые шрифт, отступы, перенос строк и ширину
+   скроллбара — иначе каретка уезжает относительно цветного текста. */
+.editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.editor-banner {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 22px;
+  border-bottom: 1px solid var(--border);
+  background: var(--inline-code-bg);
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.editor-banner-text {
+  margin-right: auto;
+  color: var(--muted);
+}
+
+.editor-banner-btn {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.editor-banner-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.editor-banner-btn:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.editor-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.editor-highlight,
+.editor-input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  border: 0;
+  padding: 16px 22px 28px;
+  font-family: 'SF Mono', ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  letter-spacing: 0;
+  tab-size: 4;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  scrollbar-gutter: stable;
+}
+
+/* Цветной слой только рисует текст: события мыши и фокус — у textarea. */
+.editor-highlight {
+  overflow: auto;
+  color: var(--fg);
+  background: var(--bg);
+  pointer-events: none;
+}
+
+/* Скроллбар оверлея невидим, но сохраняет ту же ширину, что у textarea,
+   поэтому перенос длинных строк в обоих слоях совпадает. */
+.editor-highlight::-webkit-scrollbar,
+.editor-input::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+.editor-highlight::-webkit-scrollbar-thumb,
+.editor-highlight::-webkit-scrollbar-track,
+.editor-highlight::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.editor-input {
+  overflow: auto;
+  resize: none;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--fg);
+}
+
+/* Подсказка видна, пока текста нет; цвет приходит из темы. */
+.editor-input::placeholder {
+  color: var(--muted);
+  opacity: 0.65;
+}
+
+/* Выделение в textarea красим полупрозрачной подложкой: текст прозрачный,
+   но границы выделения должны читаться поверх оверлея. */
+.editor-input::selection {
+  background: rgba(68, 147, 248, 0.35);
+}
+
+.editor-status {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 5px 22px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  user-select: none;
+}
+
+.editor-dirty.on {
+  color: var(--syn-variable);
+}
+
+.editor-hint {
+  margin-left: auto;
+}
+
+/* Палитра Markdown-разметки в редакторе. Только цвет, фон, подчёркивание
+   и зачёркивание: начертание и кегль не меняем, иначе поедет каретка. */
+.md-heading-marker { color: var(--md-heading); }
+.md-heading { color: var(--md-heading); }
+.md-strong { color: var(--md-strong); }
+.md-em { color: var(--md-em); }
+.md-strike { color: var(--md-em); text-decoration: line-through; }
+.md-code {
+  color: var(--md-code-text);
+  background: var(--inline-code-bg);
+  border-radius: 3px;
+}
+.md-code-fence { color: var(--md-fence); }
+.md-code-info { color: var(--md-url); }
+.md-code-block { color: var(--md-code-block); }
+.md-link-text { color: var(--md-link); }
+.md-image { color: var(--md-image); }
+.md-url { color: var(--md-url); }
+.md-quote-marker { color: var(--md-marker); }
+.md-quote { color: var(--md-quote); }
+.md-list-marker { color: var(--md-list); }
+.md-task { color: var(--md-task); }
+.md-marker { color: var(--md-marker); }
+.md-hr { color: var(--md-hr); }
+.md-escape { color: var(--md-escape); }
+.md-html { color: var(--md-html); }
+
+/* Узкое окно: подписи кнопок скрываются, остаются иконки с aria-label. */
+@media (max-width: 760px) {
+  .action-label {
+    display: none;
+  }
+
+  .ctl.action {
+    padding: 0 10px;
+  }
 }
 
 /* Панель поиска по документу (Ctrl+F): висит под заголовком справа, не занимает

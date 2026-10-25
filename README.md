@@ -11,8 +11,10 @@ A compact, high-performance desktop Markdown viewer built with **Rust + Tauri 2 
 - **GitHub Flavored Markdown extensions** — tables, strikethrough, task lists, and automatic links are enabled.
 - **Syntax highlighting** — code fences are highlighted with [`syntect`](https://github.com/servo/syntect). TypeScript (`typescript` / `ts` / `tsx`), `shell`, and `dotenv` fences are aliased to their nearest built-in grammar (`js`, `bash`, `properties`).
 - **Automatic light/dark themes** — styling follows the system `prefers-color-scheme`, including the syntax-highlight palette.
-- **Copy HTML for wikis** — the title bar has a *Копировать HTML* button that puts the rendered document body markup on the clipboard, ready to paste into a wiki that renders pages only as HTML markup. Such wikis (e.g. Confluence) don't load the app's CSS and ignore classes, so styling is inlined: `style="…"` on every `<code>`, `<pre>` and `<blockquote>` (frame, background, monospace font; quotes and code blocks carry their own 16px top margin, since the wiki's previous element may not provide one) plus syntax-highlight spans. Colors are Atlassian Design System tokens; text colors are token-only (`var(--ds-text-code-keywords)`) so Confluence's light/dark theme controls readability (a hard-coded hex stays dark on the dark surface), while backgrounds and borders keep the viewer palette as fallback (`var(--ds-surface-sunken,#f6f8fa)`) — Confluence replaces literal colors with its own tokens on save while keeping tokens intact; `font-family` lists only space-free names, since Confluence quotes space-containing ones inside `style="…"` and tears the attribute apart. The markup is rendered from the file snapshot taken when it was opened, so it always matches what is on screen.
+- **Copy HTML for wikis** — the title bar has a *Копировать HTML* button that puts the rendered document body markup on the clipboard, ready to paste into a wiki that renders pages only as HTML markup. Such wikis (e.g. Confluence) don't load the app's CSS and ignore classes, so styling is inlined: `style="…"` on every `<code>`, `<pre>` and `<blockquote>` (frame, background, monospace font; quotes and code blocks carry their own 16px top margin, since the wiki's previous element may not provide one) plus syntax-highlight spans. Colors are Atlassian Design System tokens; text colors are token-only (`var(--ds-text-code-keywords)`) so Confluence's light/dark theme controls readability (a hard-coded hex stays dark on the dark surface), while backgrounds and borders keep the viewer palette as fallback (`var(--ds-surface-sunken,#f6f8fa)`) — Confluence replaces literal colors with its own tokens on save while keeping tokens intact; `font-family` lists only space-free names, since Confluence quotes space-containing ones inside `style="…"` and tears the attribute apart. The markup is rendered from the snapshot of the currently displayed version (updated on live reload and on save), so it always matches what is on screen.
 - **In-document search (Ctrl+F / ⌘F)** — a floating find bar searches the rendered text as you type, highlights every match, scrolls the document to the current one and marks it brighter. `Enter` / `Shift+Enter` cycle matches, `Esc` closes the bar and removes the highlights, and an `Aa` toggle switches case-sensitive search. Matching is literal (regex metacharacters are escaped).
+- **Live reload** — the app watches the opened file for external changes (FNV-1a content hash polled over IPC, so same-size writes and editors that replace the file are detected). The document is re-rendered automatically and the scroll position is restored; an open search bar is re-applied without moving the page.
+- **Markdown source editor** — the pencil button in the title bar switches to plain-text editing with a dedicated Markdown palette (headings, emphasis, links, inline code, fences, lists, quotes and tables are colour-coded; text metrics stay identical so the caret aligns with the highlighted overlay). `Ctrl+S` / `⌘S` saves, `Tab` inserts an indent, and a status line shows the dirty state, line and character counts. Unsaved edits are never overwritten by live reload: an external change shows a banner with *Загрузить с диска* / *Сохранить мои*, and leaving the editor with unsaved changes asks for confirmation.
 - **Smart link handling** — clicking a link:
   - `http`/`https` and other schemes (`mailto:`, `tel:`, …) open in the system's default handler;
   - local `.md` paths (including relative ones) open in a **new instance** of the app, resolved against the current document's directory.
@@ -34,6 +36,8 @@ The executable takes the **relative or absolute path to a `*.md` file** as its f
 | `Enter` | Jump to the next match |
 | `Shift+Enter` | Jump to the previous match |
 | `Esc` | Close the search bar and clear the highlights |
+| `Ctrl+S` / `⌘S` | Save the file while editing |
+| `Tab` | Insert a two-space indent in the editor |
 
 ## Tech Stack
 
@@ -93,6 +97,8 @@ Artifacts:
 
 - **Software rendering is forced.** WebKitGTK without an available EGL display aborts with `Could not create default EGL display: EGL_BAD_PARAMETER`. To make the AppImage work regardless of environment, GPU compositing, the DMABUF renderer, and hardware acceleration are disabled, and Mesa `llvmpipe` is selected (`WEBKIT_DISABLE_*`, `LIBGL_ALWAYS_SOFTWARE`).
 - The frameless window draws its own title bar and buttons because on some systems the window manager paints the system frame and it can't be recolored from the app. The required window commands are granted through the `capabilities` permissions.
+- **Live reload is content-based.** `markdown_revision` reads the file and returns an FNV-1a hash; a hash change triggers `read_markdown` with the current scroll/caret position restored. Polling is a single self-scheduling timer (no overlapping IPC calls), stopped when the component unmounts.
+- **The editor has no third-party editor dependency.** It is a transparent `<textarea>` over a highlighted `<pre>`; both layers share font metrics, padding, wrapping and scrollbar width, and the overlay's scroll position follows the textarea on every input and scroll event. Highlighting only changes colour/background/decoration, never font weight or size, so the caret stays aligned.
 - **Clipboard writes go through GTK.** The copy command runs on the GTK main thread and hands the markup to the system clipboard; on X11 it also asks a clipboard manager to keep the content after the app exits. GDK serves the legacy `STRING`/`TEXT` targets with `\uXXXX` escapes for non-Latin1 characters, so paste into apps that ask for UTF-8 (`UTF8_STRING` / `text/plain;charset=utf-8`) — browsers do — to get the original text.
 - **Wiki markup is built for Confluence's save round-trip.** Confluence Cloud rewrites literal CSS colors to `var(--ds-*)` design tokens when a page is saved and re-serializes style attributes; the copied markup therefore uses Atlassian code tokens (text colors without hex fallbacks, so they follow the wiki's theme), puts a single property on each highlight span, and avoids quotes inside `style="…"`.
 
@@ -100,7 +106,7 @@ Artifacts:
 
 ```
 ├── src/            Rust backend (main.rs, lib.rs)
-├── frontend/       Svelte + Vite frontend (App.svelte, styles.css)
+├── frontend/       Svelte + Vite frontend (App.svelte, styles.css, highlight.js)
 ├── build.sh        Docker build + AppImage re-pack script
 ├── Dockerfile.build  Build image with system deps
 ├── tauri.conf.json Tauri config (deb + appimage targets)
